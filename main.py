@@ -84,6 +84,8 @@ def search_condo(price_search_from, price_search_to, space_search_from, space_se
             url += '&desc_search=' + str(desc_search)
         url += '&created_within_mins=' + str(range_condo_created_min)
         response = requests.get(url, headers=headers)
+        
+        logger.info("URL: "+ url +" Search condo response: " + str(response))
         if response.status_code == 401:
             logger.error("401 Error from Condo Service: search_condo" + str(response))
             raise AuthenticationException
@@ -120,7 +122,7 @@ def schedule_notification():
         user_list = get_user_by_tier()
         for user in user_list:
             # find user favorite condo
-            user_id = 21
+            user_id = user['id']
 
             logger.info('Start getting favorite search for user: ' + str(user_id))
             favorite_search_list = get_favorite_search(user_id)
@@ -141,12 +143,15 @@ def schedule_notification():
                 # Validate notification duplication
                 notified_list = redis_client.lrange( user_id, 0, -1)
                 search_list = [(lambda condo: condo.get('unique_validator'))(condo) for condo in condo_list]
+
+
                 to_be_notify_unique_list = [x for x in search_list if x not in notified_list]
 
                 condo_list = [x for x in condo_list if x.get('unique_validator') in to_be_notify_unique_list]
-
+       
                 # Todo: send notification to user
                 for condo in condo_list:
+                    logger.info("Send user notification: " + condo['unique_validator'])
                     image = condo['image_url1']
                     desc = condo['short_desc'][:50]
                     price = condo['price_from']
