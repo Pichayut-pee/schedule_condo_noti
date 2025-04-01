@@ -51,6 +51,29 @@ def get_user_by_tier():
         return ServerErrorException
 
 
+WEBHOOK_URL = 'https://discordapp.com/api/webhooks/1350265746243977298/ez0SddlwDqN-07cYwiP3VImUFriwjBPotN6dSaiHBPz0YLiOd57i2UpG4h7N4IAVs1Bh'
+
+
+def send_alert(message: str):
+    # Construct the payload
+    payload = {
+        "content": message
+    }
+
+    headers = {
+        "Content-Type": "application/json"
+    }
+
+    # Send POST request to Discord Webhook URL
+    response = requests.post(WEBHOOK_URL, data=json.dumps(payload), headers=headers)
+
+    # Check if the request was successful
+    if response.status_code == 204:
+        print("Alert sent successfully!")
+    else:
+        print(f"Failed to send alert: {response.status_code} - {response.text}")
+
+
 def get_favorite_search(user_id):
     response = requests.get(user_service_url + '/get/favorite_search?user_id=' + str(user_id), headers=headers)
     if response.status_code == 401:
@@ -84,8 +107,8 @@ def search_condo(price_search_from, price_search_to, space_search_from, space_se
             url += '&desc_search=' + str(desc_search)
         url += '&created_within_mins=' + str(range_condo_created_min)
         response = requests.get(url, headers=headers)
-        
-        logger.info("URL: "+ url +" Search condo response: " + str(response))
+
+        logger.info("URL: " + url + " Search condo response: " + str(response))
         if response.status_code == 401:
             logger.error("401 Error from Condo Service: search_condo" + str(response))
             raise AuthenticationException
@@ -111,8 +134,7 @@ def send_notification(line_user_id, messages):
             return ServerErrorException
     except Exception as e:
         logger.error("500 Error from Notification Service: send_notification" + str(e))
-
-
+        return ServerErrorException
 
 
 # Press the green button in the gutter to run the script.
@@ -135,20 +157,29 @@ def schedule_notification():
                                           favorite_search['room_search_from'], favorite_search['room_search_to'],
                                           favorite_search['toilet_search_from'], favorite_search['toilet_search_to'],
                                           favorite_search['floor_search_from'], favorite_search['floor_search_to'],
-                                          favorite_search['location_search'], favorite_search['desc_search'],favorite_search['limit'])
+                                          favorite_search['location_search'], favorite_search['desc_search'],
+                                          favorite_search['limit'])
+
+                try:
+                    if len(condo_list) == 0:
+                        continue
+                except Exception as e:
+                    send_alert("len(condo_list) error: " + str(e))
+                    logger.error("Error at schedule notification: " + str(e))
+                    continue
 
                 messages = []
                 line_user_id = user['line_user_id']
 
                 # Validate notification duplication
-                notified_list = redis_client.lrange( user_id, 0, -1)
-                search_list = [(lambda condo: condo.get('unique_validator'))(condo) for condo in condo_list]
+                notified_list = redis_client.lrange(str(user_id)+'_'+str(favorite_search['id']), 0, -1)
 
+                search_list = [(lambda condo: condo.get('unique_validator'))(condo) for condo in condo_list]
 
                 to_be_notify_unique_list = [x for x in search_list if x not in notified_list]
 
                 condo_list = [x for x in condo_list if x.get('unique_validator') in to_be_notify_unique_list]
-       
+
                 # Todo: send notification to user
                 for condo in condo_list:
                     logger.info("Send user notification: " + condo['unique_validator'])
@@ -162,12 +193,15 @@ def schedule_notification():
 
                 if len(messages) > 0:
                     send_notification(line_user_id, messages)
+
+                    raise Exception('Test')
                 if len(to_be_notify_unique_list) > 0:
-                    redis_client.lpush(user_id,
+                    redis_client.lpush(str(user_id)+'_'+str(favorite_search['id']),
                                        *to_be_notify_unique_list)
     except Exception as e:
+        send_alert("Error at schedule notification: " + str(e))
         logger.error("Error at schedule notification: " + str(e))
-        raise ServerErrorException
+        return
     logger.info('End schedule notification')
 
 
@@ -175,6 +209,7 @@ try:
     schedule.every(int(notification_interval_second)).seconds.do(schedule_notification)
     logger.info('Start schedule notification at with interval:"' + notification_interval_second + '" seconds')
 except Exception as e:
+    send_alert("Error at schedule notification: " + str(e))
     logger.error("Error at schedule notification: " + str(e))
 while True:
     schedule.run_pending()
