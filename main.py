@@ -210,7 +210,7 @@ def schedule_notification():
                     price = f'{price:,}'
                     link = condo['link']
                     logger.info('Send notification to user: ' + str(line_user_id) + ' with condo: ' + str(link))
-                    send_user_monitoring('Send user: ' + user['username'] + ' Condo link: ' + + str(link))
+                    send_user_monitoring('Send user: ' + user['username'] + ' Condo link: ' + str(link))
                     messages.append(CondoMesage(image, desc, price, link))
 
                 if len(messages) > 0:
